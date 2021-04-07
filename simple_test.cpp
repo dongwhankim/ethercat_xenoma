@@ -23,7 +23,7 @@
 
 #define EC_TIMEOUTMON 500
 #define JDOF 1
-#define MAX_TORQUE 10
+#define MAX_TORQUE 1000
 #define ELMO_DOF 33
 
 #define INITIAL_POS 0
@@ -39,6 +39,7 @@ uint8 currentgroup = 0;
 bool ecat_number_ok = false;
 bool ecat_WKC_ok = false;
 
+// rx, tx setting
 namespace EtherCAT_Elmo
 {
     enum MODE_OF_OPERATION
@@ -51,7 +52,8 @@ namespace EtherCAT_Elmo
         CyclicSynchronousPositionmode = 8,
         CyclicSynchronousVelocitymode = 9,
         CyclicSynchronousTorquemode = 10,
-        CyclicSynchronousTorquewithCommutationAngle = 11
+        CyclicSy
+        = 11
     };
 
     struct ElmoGoldDevice
@@ -139,13 +141,13 @@ enum
 
 bool controlWordGenerate(const uint16_t statusWord, uint16_t &controlWord)
 {
-    if (!(statusWord & (1 << OPERATION_ENABLE_BIT)))
+    if (!(statusWord & (1 << OPERATION_ENABLE_BIT))) //4
     {
-        if (!(statusWord & (1 << SWITCHED_ON_BIT)))
+        if (!(statusWord & (1 << SWITCHED_ON_BIT))) //2
         {
-            if (!(statusWord & (1 << READY_TO_SWITCH_ON_BIT)))
+            if (!(statusWord & (1 << READY_TO_SWITCH_ON_BIT))) //1
             {
-                if (statusWord & (1 << FAULT_BIT))
+                if (statusWord & (1 << FAULT_BIT)) //8
                 {
                     std::cout << "false1" <<std::endl;
                     controlWord = 0x80;                    
@@ -165,6 +167,8 @@ bool controlWordGenerate(const uint16_t statusWord, uint16_t &controlWord)
                 return true;
             }
         }
+
+
         else
         {
             std::cout << "true2" <<std::endl;
@@ -174,7 +178,8 @@ bool controlWordGenerate(const uint16_t statusWord, uint16_t &controlWord)
     }
     else
     {
-        std::cout << "true3" <<std::endl;
+        //std::cout << "true3" <<std::endl;
+        std::cout << "Motor Control..."<<std::endl;
         controlWord = CW_ENABLEOP;        
         return true;
     }
@@ -226,53 +231,9 @@ void simpletest2(char *ifname)
 
             if (!exit_middle)
             {
-                if (true)
-                {
-    //                 for (int i=1; i<=ec_slavecount; i++) {
-
-    //                     #define READ(idx, sub, buf, comment)    \
-    // {   \
-    //     buf=0;  \
-    //     int __s = sizeof(buf);    \
-    //     int __ret = ec_SDOread(1, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
-    //     printf("Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment);    \
-    //  }
-
-    //                     int os;
-    //                     os = sizeof(map_1c12);
-    //                     ec_SDOwrite(slave, 0x1c12, 0, TRUE, os, &map_1c12, EC_TIMEOUTRXM);
-    //                     os = sizeof(map_1c13);
-    //                     ec_SDOwrite(slave, 0x1c13, 0, TRUE, os, &map_1c13, EC_TIMEOUTRXM);
-
-    //                 int os_buf;
-    //                 uint16 map_stauts = {0x1605};
-    //                 ec_SDOwrite(i, 0x6040, 0, FALSE, os_buf, "*status word*");
-
-    //                 if(buf16 == 0x218)
-    //                 {
-    //                     WRITE(i, 0x6040, 0, buf16, 128, "*control word*"); usleep(100000);
-    //                     READ(i, 0x6041, 0, buf16, "*status word*");
-    //                 }
-
-    //                 WRITE(i, 0x6040, 0, buf16, 0, "*control word*"); usleep(100000);
-    //                 READ(i, 0x6041, 0, buf16, "*status word*");
-
-    //                 WRITE(i, 0x6040, 0, buf16, 6, "*control word*"); usleep(100000);
-    //                 READ(i, 0x6041, 0, buf16, "*status word*");
-
-    //                 WRITE(i, 0x6040, 0, buf16, 7, "*control word*"); usleep(100000);
-    //                 READ(i, 0x6041, 0, buf16, "*status word*");
-
-    //                 WRITE(i, 0x6040, 0, buf16, 15, "*control word*"); usleep(100000);
-    //                 READ(i, 0x6041, 0, buf16, "*status word*");
-
-    //                 CHECKERROR(i);
-    //                 READ(i, 0x1a0b, 0, buf8, "OpMode Display");
-
-    //                 READ(i, 0x1001, 0, buf8, "Error");
-    //             }
-
-    ec_statecheck(0, EC_STATE_PRE_OP,  EC_TIMEOUTSTATE);
+               // if (true)
+                
+                     ec_statecheck(0, EC_STATE_PRE_OP,  EC_TIMEOUTSTATE);
                 
                     for (int slave = 1; slave <= ec_slavecount; slave++)
                     {
@@ -305,7 +266,7 @@ void simpletest2(char *ifname)
                         //uint16 map_1c13[4] = {0x1a00, 0x1a11, 0x1a13, 0x1a1e}; //, 0x1a12};
                         //uint16 map_1c13[4] = {0x6041, 0x6064, 0x6077, 0x606C}; //, 0x1a12}; homming X
                         //uint16 map_1c13[3] = {0x1a00 , 0x606C, 0x6077};
-                        //uint16 map_1c13[2] = {0x6041,0x6064};
+                        //uint16 map_1c13[2] = {0x0001,0x6041}; // status word only
                         //uint16 map_1c13[3] = {0x0002, 0x1a11, 0x1a00};
                         //uint16 map_1c13[6] = {0x0005, 0x1a04, 0x1a11, 0x1a12, 0x1a1e, 0X1a1c};
                         
@@ -369,13 +330,13 @@ void simpletest2(char *ifname)
                         std::cout << "STARTING IN 3 ... " << std::endl;
                         printf("ELMO : Operational state reached for all slaves! Starting in ... 3... ");
                         fflush(stdout);
-                        usleep(1000000);//std::this_thread::sleep_for(std::chrono::seconds(1));
+                        usleep(100000);//std::this_thread::sleep_for(std::chrono::seconds(1));
                         printf("2... ");
                         fflush(stdout);
-                        usleep(1000000);//std::this_thread::sleep_for(std::chrono::seconds(1));
+                        usleep(100000);//std::this_thread::sleep_for(std::chrono::seconds(1));
                         printf("1... ");
                         fflush(stdout);
-                        usleep(1000000);//std::this_thread::sleep_for(std::chrono::seconds(1));
+                        usleep(100000);//std::this_thread::sleep_for(std::chrono::seconds(1));
                         printf("0... Start! \n");
 
                         inOP = TRUE;
@@ -495,20 +456,28 @@ void simpletest2(char *ifname)
 
                                     if (reachedInitial[slave - 1])
                                     {          
-                                        txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
-                                        txPDO[slave-1]->targetVelocity = (int16) 0;
-                                  
-
+                                        //txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousPositionmode;
+                                        //txPDO[slave-1]->targetPosition = (int) 300000;
+                                        //txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
+                                        //txPDO[slave-1]->targetVelocity = (int) 825000;
+                                        txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousTorquemode;
+                                        txPDO[slave-1]->targetTorque = (int16) (60);
+                                        //txPDO[0]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
                                         // std::cout << "Test3" <<std::endl;
-                                        // std::cout << target->status <<std::endl;
-                                        // //std::cout << val->torque <<std::endl;
-                                        // std::cout << val->status <<std::endl;                   
-                                        // std::cout << val->position <<std::endl;                   
-                                        std::cout << txPDO[slave - 1]->controlWord <<std::endl;
+                  
+                                        //std::cout << txPDO[slave - 1]->controlWord <<std::endl;
                                         //std::cout << rxPDO[slave - 1]->velocityActualValue <<std::endl;
-                                        std::cout << rxPDO[slave - 1]->statusWord <<std::endl;
-                                        std::cout << rxPDO[slave - 1]->velocityActualValue <<std::endl;
-                                        std::cout << rxPDO[slave - 1]->hommingSensor <<std::endl;
+                                        //std::cout << !( (rxPDO[slave - 1]-> statusWord ) & (1 << OPERATION_ENABLE_BIT)) << std::endl;
+                                        //std::cout << stateElmo[slave-1]<<std::endl;
+                                        std::cout << "Position : "<<rxPDO[slave - 1]->positionActualValue<<std::endl;
+                                        std::cout << "Velocity : " <<velocityElmo<<std::endl;
+                                        std::cout << "Torque : " <<torqueElmo<<std::endl;
+                                        //std::cout << velocityElmo<<std::endl;
+                                        //std::cout << hommingElmo[slave - 1] <<std::endl;
+                                        //for(int i=0; i<20; i++)
+                                        //{
+                                        //    std::cout <<"i = " << i <<", " << ec_slave[1].inputs[i] <<std::endl;
+                                        //}
                                         
                                         //Get status
                                         //positionElmo = rxPDO[slave - 1]->velocityActualValue;
@@ -517,7 +486,7 @@ void simpletest2(char *ifname)
 
                                       /*
                                         std::cout << "torque"<< torqueElmo <<std::endl;
-                                         
+                                         */
                                         hommingElmo[slave - 1] =
                                             (((uint32_t)ec_slave[slave].inputs[4]) +
                                              ((uint32_t)ec_slave[slave].inputs[5] << 8) +
@@ -525,7 +494,7 @@ void simpletest2(char *ifname)
                                              ((uint32_t)ec_slave[slave].inputs[7] << 24));
                                         
                                         stateElmo[slave - 1] =
-                                            (((uint16_t)ec_slave[slave].inputs[8]) +
+                                             (((uint16_t)ec_slave[slave].inputs[8]) +
                                              ((uint16_t)ec_slave[slave].inputs[9] << 8));
 
                                         velocityElmo =
@@ -533,27 +502,23 @@ void simpletest2(char *ifname)
                                              ((int32_t)ec_slave[slave].inputs[11] << 8) +
                                              ((int32_t)ec_slave[slave].inputs[12] << 16) +
                                              ((int32_t)ec_slave[slave].inputs[13] << 24));
-                                             */
-                                        /*
-                                         //ElmoMode[slave - 1] = EM_TORQUE;
-                                         ELMO_torque[slave - 1] = 1;
-                                         txPDO[0]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousTorquemode;
-                                         txPDO[0]->targetTorque = (int) 1 ;
-                                         torqueElmo =rxPDO[slave - 1]->torqueActualValue;
-                                         
-                                         torqueElmo=
-                                            (((int16_t)ec_slave[slave].inputs[14]) +
+                                        
+                                        //if (rxPDO[slave-1] -> torqueActualValue)
+
+                                        torqueElmo=
+                                             (((int16_t)ec_slave[slave].inputs[14]) +
                                              ((int16_t)ec_slave[slave].inputs[15] << 8));
+
                                                                           
                                         
-                                        positionExternalElmo =
-                                            (((int32_t)ec_slave[slave].inputs[16]) +
-                                             ((int32_t)ec_slave[slave].inputs[17] << 8) +
-                                             ((int32_t)ec_slave[slave].inputs[18] << 16) +
-                                             ((int32_t)ec_slave[slave].inputs[19] << 24)); //???
+                                        //positionExternalElmo =
+                                         //   (((int32_t)ec_slave[slave].inputs[16]) +
+                                         //    ((int32_t)ec_slave[slave].inputs[17] << 8) +
+                                         //    ((int32_t)ec_slave[slave].inputs[18] << 16) +
+                                         //    ((int32_t)ec_slave[slave].inputs[19] << 24)); //???
                                         
                                         txPDO[slave - 1]->maxTorque = (uint16)MAX_TORQUE; // originaly 1000                                        
-                                       */
+                                       
                                     }
                                 }                                 
                             }
@@ -576,7 +541,7 @@ void simpletest2(char *ifname)
                         
                     }
 
-                }
+                
             }
         }
     }

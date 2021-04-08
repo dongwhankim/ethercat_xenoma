@@ -25,8 +25,9 @@
 #define JDOF 1
 #define MAX_TORQUE 1000
 #define ELMO_DOF 33
-
+#define PERIOD_NS 1000000
 #define INITIAL_POS 0
+#define SEC_IN_NSEC 1000000000
 
 char IOmap[4096];
 pthread_t thread1;
@@ -35,9 +36,11 @@ boolean needlf;
 volatile int wkc;
 boolean inOP;
 uint8 currentgroup = 0;
+int cnt_err = 0;
 
 bool ecat_number_ok = false;
 bool ecat_WKC_ok = false;
+bool de_shutdown = false;
 
 // rx, tx setting
 namespace EtherCAT_Elmo
@@ -89,7 +92,7 @@ bool hommingElmo[JDOF];
 int stateElmo[JDOF];
 int ElmoMode[ELMO_DOF];
 
-double positionElmo, velocityElmo, torqueElmo, positionExternalElmo;
+double positionElmo, velocityElmo, torqueElmo, positionExternalElmo, torqueElmocheck;
 double ELMO_torque[JDOF];
 
 const int FAULT_BIT = 3;
@@ -150,13 +153,15 @@ bool controlWordGenerate(const uint16_t statusWord, uint16_t &controlWord)
                 if (statusWord & (1 << FAULT_BIT)) //8
                 {
                     std::cout << "false1" <<std::endl;
-                    controlWord = 0x80;                    
+                    controlWord = 0x80;
+                    cnt_err++;                    
                     return false;
                 }
                 else
                 {
                     std::cout << "false2" <<std::endl;
-                    controlWord = CW_SHUTDOWN;                    
+                    controlWord = CW_SHUTDOWN;
+                    cnt_err++;                    
                     return false;
                 }
             }
@@ -184,7 +189,8 @@ bool controlWordGenerate(const uint16_t statusWord, uint16_t &controlWord)
         return true;
     }
     std::cout << "false3" <<std::endl;
-    controlWord = 0;    
+    controlWord = 0;
+    cnt_err++;    
     return false;
 }
 
@@ -348,94 +354,72 @@ void simpletest2(char *ifname)
                             txPDO[slave - 1] = (EtherCAT_Elmo::ElmoGoldDevice::elmo_gold_tx *)(ec_slave[slave].outputs);
                             rxPDO[slave - 1] = (EtherCAT_Elmo::ElmoGoldDevice::elmo_gold_rx *)(ec_slave[slave].inputs);
                         }
-                        
 
-                        std::chrono::duration<double> time_from_begin;
-                        std::chrono::duration<double> time_err_reset = std::chrono::seconds(0);
-
-                        int cycle_time = 1000; // 1ms, 1kHz
-                        int cycle_count = 0; 
-                        std::chrono::microseconds cycletime(cycle_time);
-                        
-
-                        std::chrono::steady_clock::time_point tp[10];
-                        std::chrono::steady_clock::time_point time_until;
-
-                        std::chrono::duration<double> td[8];
-                        double to_ratio, to_calib;
-
-                        double pwait_time = 1.0;
-                        int c_count = 0;
-
-                        double d_min = 1000;
-                        double d_max = 0;
-                        double d_mean = 0;
-
-                        double d1_min = 1000;
-                        double d1_max = 0;
-                        double d1_mean = 0;
-
-                        int oc_cnt = 0;
-                        int oct_cnt = 0;
-                        int err_cnt = 0;
-
+                        double cnt_cycle = 0.0;
                         positionElmo = 0.0;
                         velocityElmo = 0.0;
                         torqueElmo = 0.0;
                         positionExternalElmo = 0.0;
-
+                        
+                        struct timespec ts, ts1;
+                        
                         std::chrono::steady_clock::time_point st_start_time;
                         st_start_time = std::chrono::steady_clock::now();
-
+                        
+                        // ts.tv_nsec = time at here
                         for (int i = 0; i < ec_slavecount; i++)
                         {
                             ElmoSafteyMode[i] = 0;
                         }
+                        clock_gettime(CLOCK_MONOTONIC, &ts);
+                         ts.tv_nsec += PERIOD_NS;
+                                   while (ts.tv_nsec >= SEC_IN_NSEC)
+                                  {
+                                      ts.tv_sec++;
+                                       ts.tv_nsec -= SEC_IN_NSEC;
+                                  }
+                                  double timecheck = ts.tv_sec;
+                                  double timecheck1 = 0;
+                                  double timecheck2 = ts.tv_nsec;
+                                  double timecheck3 =0;
+                                  
+
+                        
 
                         while(true)
                         {
-                            //Ethercat Loop begins :: RT Thread
-                            tp[0] = std::chrono::steady_clock::now();
+                              //Commutation Checking
+                              st_start_time = std::chrono::steady_clock::now();
+                                std::cout << "ELMO : Initialization Mode" << std::endl;
 
-                            std::this_thread::sleep_until(st_start_time + cycle_count * cycletime);
+                                //query_check_state = true;
+                                   
+                                while (!de_shutdown)
+                                {
+                                    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
+                                    ts.tv_nsec += PERIOD_NS;
+                                    clock_gettime(CLOCK_MONOTONIC, &ts1);
+                                    
+                                    while (ts.tv_nsec >= SEC_IN_NSEC)
+                                      {
+                                          ts.tv_sec++;
+                                          ts.tv_nsec -= SEC_IN_NSEC;
+                                       }
 
-                            tp[1] = std::chrono::steady_clock::now();
-                            time_from_begin = std::chrono::steady_clock::now() - st_start_time;
-                            control_time_real_ = time_from_begin.count();
 
-                            /** PDO I/O refresh */
-                            ec_send_processdata();
+                                    ec_send_processdata();
+                                    wkc = ec_receive_processdata(0);
+                                    
+                                    control_time_real_ = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - st_start_time).count() / 1000000.0;
+                                    //std::cout << "Real time : "<<control_time_real_ << std::endl;
+                                    //std::cout << lat / 10000000.0 << std::endl;
+                                    //std::cout << "Posix time : "<<ts.tv_sec << std::endl;
+                                    //std::cout << "Posix time : "<<ts1.tv_nsec << std::endl;
+                                    //std::cout << "Posix time : "<<timecheck3 / 1000000000.0 << std::endl;
 
-                            tp[2] = std::chrono::steady_clock::now();
-                            wkc = ec_receive_processdata(0);
+                                    //std::cout << cnt_err << std::endl;
 
-                            tp[3] = std::chrono::steady_clock::now();
 
-                            td[0] = st_start_time + cycle_count * cycletime - tp[0];
-                            td[1] = tp[1] - tp[0];
-
-                            td[2] = tp[2] - tp[1];
-                            td[3] = tp[3] - tp[2];
-
-                            if (td[3] > std::chrono::microseconds(250))
-                            {
-                                oc_cnt++;
-                            }
-
-                            if (tp[3] > st_start_time + (cycle_count + 1) * cycletime)
-                            {
-                                std::cout << "## ELMO LOOP INSTABILITY DETECTED ##\n START TIME DELAY :" << -td[0].count() * 1E+6 << " us\n THREAD SYNC TIME : " << td[1].count() * 1E+6 << " us\n RECV ELMO TIME : " << td[3].count() * 1E+6 << " us \t last tick : " << td[5].count() * 1E+6 << " us \t last send process : " << td[6].count() * 1E+6 << " us\n LAST LOOP :" << td[4].count() * 1E+6 << " us\n " << std::endl;
-                                std::cout << "If you see this warning message often, Rebooting robot is recommanded" << std::endl;
-                                
-                                err_cnt++;
-                                //std::cout << err_cnt << "   " << cycle_count <<std::endl;
-                                if(err_cnt > 10)
-                                {                                    
-                                    break;
-                                }
-                            }
-                            td[5] = td[3];
-                               // std::cout << "WKC" << wkc <<std::endl;
                             if (wkc >= expectedWKC)
                             {
                                 for (int slave = 1; slave <= ec_slavecount; slave++)
@@ -458,10 +442,10 @@ void simpletest2(char *ifname)
                                     {          
                                         //txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousPositionmode;
                                         //txPDO[slave-1]->targetPosition = (int) 300000;
-                                        //txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
-                                        //txPDO[slave-1]->targetVelocity = (int) 825000;
-                                        txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousTorquemode;
-                                        txPDO[slave-1]->targetTorque = (int16) (60);
+                                        txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
+                                        txPDO[slave-1]->targetVelocity = (int) 825000;
+                                        //txPDO[slave-1]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousTorquemode;
+                                        //txPDO[slave-1]->targetTorque = (int16) (-120);
                                         //txPDO[0]->modeOfOperation = EtherCAT_Elmo::CyclicSynchronousVelocitymode;
                                         // std::cout << "Test3" <<std::endl;
                   
@@ -471,7 +455,7 @@ void simpletest2(char *ifname)
                                         //std::cout << stateElmo[slave-1]<<std::endl;
                                         std::cout << "Position : "<<rxPDO[slave - 1]->positionActualValue<<std::endl;
                                         std::cout << "Velocity : " <<velocityElmo<<std::endl;
-                                        std::cout << "Torque : " <<torqueElmo<<std::endl;
+                                        std::cout << "Torque : " <<torqueElmocheck<<std::endl;
                                         //std::cout << velocityElmo<<std::endl;
                                         //std::cout << hommingElmo[slave - 1] <<std::endl;
                                         //for(int i=0; i<20; i++)
@@ -509,6 +493,15 @@ void simpletest2(char *ifname)
                                              (((int16_t)ec_slave[slave].inputs[14]) +
                                              ((int16_t)ec_slave[slave].inputs[15] << 8));
 
+
+                                             torqueElmocheck = torqueElmo;
+
+                                               if ( torqueElmocheck >= 30000)
+                                             {
+                                                 torqueElmocheck = 65536 - torqueElmocheck;
+                                             }
+
+
                                                                           
                                         
                                         //positionExternalElmo =
@@ -518,7 +511,10 @@ void simpletest2(char *ifname)
                                          //    ((int32_t)ec_slave[slave].inputs[19] << 24)); //???
                                         
                                         txPDO[slave - 1]->maxTorque = (uint16)MAX_TORQUE; // originaly 1000                                        
-                                       
+                                       if (cnt_err >= 15)
+                                       {
+                                           break;
+                                       }
                                     }
                                 }                                 
                             }
@@ -526,22 +522,11 @@ void simpletest2(char *ifname)
                                 break;
                             }     
 
-
-                        cycle_count++;
-
-
-
-
-
-                            //if(reachedInitial[slave - 1] == true) 
-                            //{
-                            //    break;
-                            //}
                         }
                         
                     }
 
-                
+                    }
             }
         }
     }
